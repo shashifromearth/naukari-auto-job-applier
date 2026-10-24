@@ -1,16 +1,16 @@
 ﻿(function () {
   // Candidate Profile Configuration
   const PROFILE_CONFIG = {
-    totalExperience: "12",
-    currentCtc: "55", // LPA
-    expectedCtc: "55", // LPA
+    totalExperience: "1",
+    currentCtc: "5", // LPA
+    expectedCtc: "5", // LPA
     noticePeriodDays: "0",
     relocate: "Yes",
-    teamSize: "10",
+    teamSize: "1",
     // Leave blank to answer these with the default text below
-    currentLocation: "",
+    currentLocation: "Bengaluru",
     preferredLocation: "Any",
-    currentCompany: "",
+    currentCompany: "Mckinsey",
     currentDesignation: "",
     highestQualification: "",
 
