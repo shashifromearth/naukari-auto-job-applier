@@ -220,7 +220,7 @@
     const q = question.toLowerCase();
     if (DATE_QUESTION.test(q)) return todayDate();
     if (YES_NO_QUESTION.test(q) && !/how many|how much/.test(q)) return PROFILE_CONFIG.defaults.yesNo;
-    if (/how many|how much|number of|\bno\.? of\b|years|months|days|\bctc\b|salary|lpa|lakh|percent|%|count|size|\bage\b/.test(q)) {
+    if (/how many|how much|number of|\bno\.? of\b|years|\byoe\b|\bexp\b|months|days|\bctc\b|salary|lpa|lakh|percent|%|count|size|\bage\b/.test(q)) {
       return PROFILE_CONFIG.defaults.number;
     }
     return PROFILE_CONFIG.defaults.text;
@@ -232,7 +232,7 @@
     const known = QUESTION_ANSWERS.find(([pattern, answer]) => answer && pattern.test(q));
     if (known) return known[1];
     if (YES_NO_QUESTION.test(q) && !/how many|how much/.test(q)) return PROFILE_CONFIG.defaults.yesNo;
-    if (/experience|years|yrs|how long/.test(q)) {
+    if (/experience|years|yrs|\byoe\b|\bexp\b|how long/.test(q)) {
       const skill = PROFILE_CONFIG.skillExperience.find(([pattern]) => pattern.test(q));
       return skill ? skill[1] : PROFILE_CONFIG.totalExperience;
     }
@@ -369,8 +369,9 @@
       return skipQuestion(bot);
     }
 
+    // Optional questions show a text box plus a lone "Skip this question" chip: answer in the text box
     const options = chatbotOptions(bot);
-    if (options.length > 0) {
+    if (options.some((option) => !option.text.includes("skip"))) {
       // Never leave a choice unanswered: best match, else "Yes", else the first real option (not "Skip this question")
       const choice =
         candidates.map((answer) => pickOption(options, answer)).find(Boolean) ||
@@ -384,7 +385,7 @@
     }
 
     const box = chatbotTextBox(bot);
-    if (!box) return null;
+    if (!box) return skipQuestion(bot);
     for (const answer of candidates) {
       box.focus();
       box.textContent = answer;
@@ -392,7 +393,7 @@
       await delay(500);
       if (clickSave(bot)) return answer;
     }
-    return null;
+    return skipQuestion(bot);
   }
 
   // The Inbox keeps a finished chatbot in the page with its drawer hidden, so only an open one counts
