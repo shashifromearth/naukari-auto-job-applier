@@ -77,19 +77,32 @@
     [/willing|comfortable|okay with|ok with|open to|agree|confirm/, "Yes"]
   ];
 
+  // Any date question (last working day, joining date, DOB...) is answered with today's date
+  const DATE_QUESTION = /\bdate\b|\bdob\b|birth|when can you (join|start)|available from|last working|\blwd\b|relieving|dd\s*\/\s*mm|mm\s*\/\s*yy/;
+
   function todayDate() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
   }
 
+  // Formats to try in a text box when the bot rejects the previous one
+  function todayDateFormats() {
+    const [d, m, y] = todayDate().split("/");
+    return [`${d}/${m}/${y}`, `${d}-${m}-${y}`, `${y}-${m}-${d}`, `${m}/${y}`];
+  }
+
   const ACTION_DELAY_MS = 2000; // 2 seconds
   const STATE_KEY = "naukriBotState";
-  const DEFAULT_LIST_URL = "https://www.naukri.com/mnjuser/recommendedjobs";
+  // A run applies to recruiter invites in the Inbox first, then to Recommended jobs
+  const INBOX_URL = "https://www.naukri.com/mnjuser/inbox";
+  const RECOMMENDED_URL = "https://www.naukri.com/mnjuser/recommendedjobs";
+  const STAGE_INBOX = 0;
+  const STAGE_RECOMMENDED = 1;
   let isRunning = false;
   let appliedCount = 0;
   // Jobs are applied on their own pages, so the run has to survive page navigations
-  let run = { queue: [], done: [], listUrl: DEFAULT_LIST_URL };
+  let run = { stage: STAGE_INBOX, queue: [], done: [] };
 
   function delay(ms = ACTION_DELAY_MS) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -110,9 +123,9 @@
       isRunning = !!saved.isRunning;
       appliedCount = saved.appliedCount || 0;
       run = {
+        stage: saved.stage || STAGE_INBOX,
         queue: saved.queue || [],
-        done: saved.done || [],
-        listUrl: saved.listUrl || DEFAULT_LIST_URL
+        done: saved.done || []
       };
     } catch (e) {
       console.warn("Could not restore run state", e);
@@ -125,6 +138,10 @@
 
   function isJobPage() {
     return location.pathname.startsWith("/job-listings-");
+  }
+
+  function isOnPage(url) {
+    return location.pathname.startsWith(new URL(url).pathname);
   }
 
   // 1. Trigger robust human-like click event for React / Angular / Vue
@@ -162,10 +179,10 @@
     btn.addEventListener("click", () => {
       isRunning = !isRunning;
       if (isRunning) {
-        run = { queue: [], done: [], listUrl: isJobPage() ? DEFAULT_LIST_URL : location.href };
+        run = { stage: STAGE_INBOX, queue: [], done: [] };
         persist();
         syncButton();
-        updateStatus("Scanning jobs on this page...");
+        updateStatus("Starting with recruiter invites in your Inbox...");
         startApplierLoop();
       } else {
         persist();
@@ -201,7 +218,7 @@
   // Fallback answer picked from the kind of value the question expects: date, yes/no, number or text
   function defaultAnswer(question) {
     const q = question.toLowerCase();
-    if (/\bdate\b|\bdob\b|birth|when can you|available from|dd\s*\/\s*mm|mm\s*\/\s*yy/.test(q)) return todayDate();
+    if (DATE_QUESTION.test(q)) return todayDate();
     if (YES_NO_QUESTION.test(q) && !/how many|how much/.test(q)) return PROFILE_CONFIG.defaults.yesNo;
     if (/how many|how much|number of|\bno\.? of\b|years|months|days|\bctc\b|salary|lpa|lakh|percent|%|count|size|\bage\b/.test(q)) {
       return PROFILE_CONFIG.defaults.number;
@@ -211,6 +228,7 @@
 
   function answerFor(question) {
     const q = question.toLowerCase();
+    if (DATE_QUESTION.test(q)) return todayDate();
     const known = QUESTION_ANSWERS.find(([pattern, answer]) => answer && pattern.test(q));
     if (known) return known[1];
     if (YES_NO_QUESTION.test(q) && !/how many|how much/.test(q)) return PROFILE_CONFIG.defaults.yesNo;
@@ -223,6 +241,7 @@
 
   // Answers to try in order when the bot rejects one and asks again
   function answerCandidates(question) {
+    if (DATE_QUESTION.test(question.toLowerCase())) return todayDateFormats();
     const { number, yesNo, text } = PROFILE_CONFIG.defaults;
     return [...new Set([answerFor(question), defaultAnswer(question), number, yesNo, text, todayDate()])];
   }
@@ -287,8 +306,69 @@
     return true;
   }
 
+  // Date questions use a calendar (date / month / year tabs, today's cell marked "-current")
+  // or separate day / month / year boxes instead of the text box
+  function chatbotDateWidget(bot) {
+    return [bot.querySelector(".calendar-container"), bot.querySelector(".dob__container")].find(isVisible) || null;
+  }
+
+  async function fillDateWidget(widget) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    if (widget.classList.contains("dob__container")) {
+      const parts = { Day: pad(now.getDate()), Month: pad(now.getMonth() + 1), Year: String(now.getFullYear()) };
+      for (const [part, value] of Object.entries(parts)) {
+        const input = widget.querySelector(`[id^='dobInput${part}_']`);
+        if (!input) continue;
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      await delay(500);
+      return true;
+    }
+
+    simulateClick(widget.querySelector(".cc__calendar-icon") || widget.querySelector("input"));
+    await delay(500);
+    const today = {
+      date: String(now.getDate()),
+      month: now.toLocaleString("en", { month: "short" }).toLowerCase(),
+      year: String(now.getFullYear())
+    };
+    // Picking a cell fills that part and moves the calendar on to the next tab
+    const parts = Array.from(widget.querySelectorAll(".cc__calendar-navitem")).map((nav) => nav.id.replace(/^cc__|-navitem$/g, ""));
+    for (const part of parts) {
+      const cells = Array.from(widget.querySelectorAll(`.cc__calendar-${part}`));
+      const cell =
+        cells.find((c) => c.querySelector(`.cc__calendar-${part}-current`)) ||
+        cells.find((c) => {
+          const text = c.textContent.trim().toLowerCase();
+          return part === "month" ? text.startsWith(today.month) : text === today[part];
+        });
+      if (!cell) return false;
+      simulateClick(cell);
+      await delay(500);
+    }
+    return true;
+  }
+
+  // Answers with the bot's own "Skip this question" option when there is one
+  async function skipQuestion(bot) {
+    const skip = chatbotOptions(bot).find((option) => option.text.includes("skip"));
+    if (!skip) return null;
+    simulateClick(skip.el);
+    await delay(500);
+    clickSave(bot);
+    return skip.text;
+  }
+
   // Returns the answer that was sent, or null when nothing could be sent
   async function submitAnswer(bot, candidates) {
+    const dateWidget = chatbotDateWidget(bot);
+    if (dateWidget) {
+      if ((await fillDateWidget(dateWidget)) && clickSave(bot)) return todayDate();
+      return skipQuestion(bot);
+    }
+
     const options = chatbotOptions(bot);
     if (options.length > 0) {
       // Never leave a choice unanswered: best match, else "Yes", else the first real option (not "Skip this question")
@@ -327,7 +407,7 @@
       if (!bot) return true;
       if (Date.now() - lastProgress > 60000) return false;
 
-      const hasControls = () => !!chatbotTextBox(bot) || chatbotOptions(bot).length > 0;
+      const hasControls = () => !!chatbotTextBox(bot) || !!chatbotDateWidget(bot) || chatbotOptions(bot).length > 0;
       const count = bot.querySelectorAll("li.botItem").length;
       if (count <= handledCount || !hasControls()) {
         await delay(1000);
@@ -352,9 +432,9 @@
       const question = isRetry && lastQuestion ? lastQuestion : latest;
       const tried = attempts[question] || 0;
       const candidates = answerCandidates(question).slice(tried);
-      if (candidates.length === 0) return false;
-
-      const sent = await submitAnswer(bot, candidates);
+      // Every answer was rejected: skip just this question if the bot allows it, else give up on the job
+      const sent = candidates.length > 0 ? await submitAnswer(bot, candidates) : await skipQuestion(bot);
+      if (candidates.length === 0 && sent === null) return false;
       if (sent === null) continue; // nothing could be sent; the stall timeout above gives up on the job
       attempts[question] = tried + 1 + Math.max(0, candidates.indexOf(sent));
       lastQuestion = question;
@@ -484,16 +564,116 @@
       location.assign(next);
     } else {
       updateStatus("Queue done. Back to the job list for more...");
-      location.assign(run.listUrl);
+      location.assign(RECOMMENDED_URL);
     }
   }
 
-  // 6. Main entry: job page -> apply and move on; job list -> queue jobs; otherwise classic layout
+  // 6. Recruiter invites on the Inbox page: each card opens a drawer with its own "Apply" button,
+  // so invites are applied in place without leaving the page
+  function reactInviteData(card) {
+    const fiberKey = Object.keys(card).find((k) => k.startsWith("__reactFiber"));
+    let fiber = fiberKey ? card[fiberKey] : null;
+    for (let i = 0; i < 4 && fiber; i++) {
+      const props = fiber.memoizedProps;
+      if (props && props.data && props.data.applyUrlData) return props.data;
+      fiber = fiber.return;
+    }
+    return null;
+  }
+
+  function pendingInvites() {
+    return Array.from(document.querySelectorAll("[data-inviteid]")).filter((card) => {
+      const invite = reactInviteData(card);
+      return !run.done.includes(`invite:${card.getAttribute("data-inviteid")}`) && !(invite && invite.isApplied);
+    });
+  }
+
+  function closeInviteDrawer() {
+    const close = document.querySelector("img[alt='X']");
+    if (close) simulateClick(close);
+  }
+
+  async function applyToInvite(card) {
+    run.done.push(`invite:${card.getAttribute("data-inviteid")}`);
+    persist();
+    // The click handler sits on the inner card, not on the [data-inviteid] wrapper
+    simulateClick(card.querySelector("[class*='cursor-pointer']") || card);
+    let btn = null;
+    for (let i = 0; i < 10 && isRunning && !btn; i++) {
+      await delay(500);
+      btn = findApplyButton();
+    }
+    if (btn && buttonLabel(btn) !== "applied") {
+      updateStatus("Applying to recruiter invite...");
+      simulateClick(btn);
+      await delay(ACTION_DELAY_MS);
+      if (await waitForApplyResult(btn)) {
+        appliedCount++;
+        persist();
+        updateStatus(`Applied! Total applied: ${appliedCount}`);
+      } else if (isRunning) {
+        updateStatus("Invite apply didn't go through. Skipping...");
+      }
+    }
+    closeInviteDrawer();
+    await delay(ACTION_DELAY_MS);
+  }
+
+  async function applyInboxInvites() {
+    for (let i = 0; i < 5 && isRunning && !document.querySelector("[data-inviteid]"); i++) await delay(1000);
+    // "Most relevant" invites first, then the "Others" tab
+    for (const tab of ["most relevant", "others"]) {
+      const tabChip = Array.from(document.querySelectorAll("button, div, span")).find(
+        (el) => el.childElementCount === 0 && isVisible(el) && (el.innerText || "").trim().toLowerCase() === tab
+      );
+      if (tabChip) {
+        simulateClick(tabChip);
+        await delay(ACTION_DELAY_MS);
+      }
+      let idleScrolls = 0;
+      while (isRunning && idleScrolls < 3) {
+        const card = pendingInvites()[0];
+        if (card) {
+          idleScrolls = 0;
+          await applyToInvite(card);
+          continue;
+        }
+        updateStatus("Scrolling for more recruiter invites...");
+        const cards = document.querySelectorAll("[data-inviteid]");
+        if (cards.length) cards[cards.length - 1].scrollIntoView({ block: "end" });
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+        await delay(ACTION_DELAY_MS);
+        idleScrolls++;
+      }
+    }
+  }
+
+  // 7. Main entry: Inbox invites first, then Recommended jobs (job page -> apply and move on;
+  // job list -> queue jobs; otherwise classic layout)
   async function startApplierLoop() {
     try {
+      if (run.stage === STAGE_INBOX) {
+        if (!isOnPage(INBOX_URL)) {
+          location.assign(INBOX_URL);
+          return;
+        }
+        await applyInboxInvites();
+        if (!isRunning) return;
+        run.stage = STAGE_RECOMMENDED;
+        persist();
+        updateStatus("Inbox done. Moving on to Recommended jobs...");
+        await delay(ACTION_DELAY_MS);
+        if (isRunning) location.assign(RECOMMENDED_URL);
+        return;
+      }
+
       if (isJobPage()) {
         await applyOnJobPage();
         await goToNextJob();
+        return;
+      }
+      if (!isOnPage(RECOMMENDED_URL)) {
+        location.assign(RECOMMENDED_URL);
         return;
       }
 
@@ -521,7 +701,7 @@
     }
   }
 
-  // 7. Classic layout: handle Auto-Switching from 'Applies' tab to 'Profile' / 'You might like'
+  // 8. Classic layout: handle Auto-Switching from 'Applies' tab to 'Profile' / 'You might like'
   async function ensureActiveJobTab() {
     // If currently on "Applies" tab (which only shows already applied jobs), switch to Profile or You might like
     const tabs = Array.from(document.querySelectorAll("a, button, li, span, [class*='tab']"));
@@ -545,7 +725,7 @@
     }
   }
 
-  // 8. Classic layout: Select 5 Custom Checkboxes and Click the Top "Apply" Button
+  // 9. Classic layout: Select 5 Custom Checkboxes and Click the Top "Apply" Button
   async function applyVia5In1Batch() {
     // A. Find all checkbox elements (custom icons, spans, SVG wraps or inputs)
     let customCheckboxes = Array.from(
@@ -620,7 +800,7 @@
     return false;
   }
 
-  // 9. Classic layout: Main Automation Loop
+  // 10. Classic layout: Main Automation Loop
   async function legacyApplierLoop() {
     while (isRunning) {
       // Step A: Ensure we are on an active unapplied jobs tab (e.g. Profile or You might like)

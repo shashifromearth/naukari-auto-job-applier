@@ -18,8 +18,10 @@
 Applying to hundreds of job postings manually on Naukri is tedious. **Naukri Smart Auto-Applier** automates the repetitive application loop directly in your browser:
 - ⚡ **Leverages Naukri's Native 5-in-1 Batch Apply**: Detects multi-select tuples and triggers batch applications for maximum speed.
 - 🎯 **1-Click Apply Fallback**: Handles single-click applies when batch mode is unavailable.
-- 🧭 **Naukri TopTier Support**: Reads your Recommended / search job lists, queues every unapplied *Quick apply* job and applies to them one by one on their own pages (company-site jobs are skipped).
+- 📬 **Inbox First**: Applies to every unapplied recruiter invite in your [Inbox](https://www.naukri.com/mnjuser/inbox) (*Most relevant* and *Others* tabs), right in the invite drawer.
+- 🧭 **Then Recommended Jobs**: Reads your [Recommended jobs](https://www.naukri.com/mnjuser/recommendedjobs), queues every unapplied *Quick apply* job and applies to them one by one on their own pages (company-site jobs are skipped).
 - 📝 **Hands-Free Questionnaires**: Answers Naukri's chatbot questions from ~50 patterns in your profile (*skill experience, CTC, notice period, relocation, work mode...*). Anything not covered gets a default by answer type (number → `1`, text → `Python`, yes/no → `Yes`, date → today), so the run never stops for input.
+- 📅 **Date Questions**: Any date question (*last working day, joining date, DOB...*) is answered with today's date, whether the bot shows a text box, a calendar or day/month/year boxes. If that fails, the bot picks *Skip this question*.
 - ⏱️ **Bot-Safe Pacing (2s Delay)**: Emulates natural human interaction timing to avoid rate limits and anti-bot blocks.
 - 🎛️ **Floating HUD Widget**: Injects an unobtrusive dark-mode controller right onto Naukri pages.
 
@@ -28,7 +30,10 @@ Applying to hundreds of job postings manually on Naukri is tedious. **Naukri Sma
 ## 🏗️ Architecture & Workflow
 
 ```
-[ Naukri Search / Recommendations Page ]
+[ Start ] ──► [ Inbox: open each unapplied invite, click Apply ]
+                   │  (Most relevant, then Others; scrolls for more)
+                   ▼
+[ Recommended Jobs Page ]
                    │
                    ▼
    [ Read job cards, queue unapplied Quick apply jobs ]
@@ -77,9 +82,9 @@ The run state lives in the tab's `sessionStorage`, so it carries on across page 
 ## 🎮 How to Use
 
 1. Log into your account on [Naukri.com](https://www.naukri.com/).
-2. Open your [Recommended Jobs Page](https://www.naukri.com/mnjuser/recommendedjobs) or any keyword search query.
+2. Open any Naukri page.
 3. You will see the floating **🚀 Naukri Multi-Apply** HUD in the bottom-right corner.
-4. Click **"Start Auto Apply"**.
+4. Click **"Start Auto Apply"**. It opens your Inbox and applies to recruiter invites first, then moves on to Recommended jobs.
 5. Watch the real-time status counter update as jobs are submitted automatically.
 6. Click **"Stop Automation"** anytime to pause.
 
