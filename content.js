@@ -395,6 +395,16 @@
     return null;
   }
 
+  // The Inbox keeps a finished chatbot in the page with its drawer hidden, so only an open one counts
+  function activeChatbot() {
+    return (
+      Array.from(document.querySelectorAll("._chatBotContainer")).find((bot) => {
+        const drawer = bot.querySelector(".chatbot_Drawer");
+        return drawer && !/Hide\b/.test(drawer.className);
+      }) || null
+    );
+  }
+
   // Answers every question without stopping. Returns true once the questionnaire closes,
   // false if it gets stuck (the job is then skipped) or the run is stopped.
   async function handleQuestionnairePopup() {
@@ -403,7 +413,7 @@
     let lastProgress = Date.now();
     const attempts = {}; // question -> how many answers were already tried
     while (isRunning) {
-      const bot = document.querySelector("._chatBotContainer");
+      const bot = activeChatbot();
       if (!bot) return true;
       if (Date.now() - lastProgress > 60000) return false;
 
@@ -464,7 +474,7 @@
   async function waitForApplyResult(btn) {
     let idle = 0;
     while (isRunning && idle < 30000) {
-      if (document.querySelector("._chatBotContainer")) {
+      if (activeChatbot()) {
         if (!(await handleQuestionnairePopup())) return false; // stuck on the questionnaire: skip this job
         idle = 0;
         continue;
