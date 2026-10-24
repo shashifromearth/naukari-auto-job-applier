@@ -96,9 +96,9 @@ To customize the values automatically entered into questionnaires, open [`conten
 
 ```javascript
 const PROFILE_CONFIG = {
-  totalExperience: "12",      // Your total years of experience
-  currentCtc: "55",           // Current CTC (in LPA)
-  expectedCtc: "55",          // Expected CTC (in LPA)
+  totalExperience: "1",      // Your total years of experience
+  currentCtc: "5",           // Current CTC (in LPA)
+  expectedCtc: "5",          // Expected CTC (in LPA)
   noticePeriodDays: "0",
   relocate: "Yes",
   teamSize: "10",
