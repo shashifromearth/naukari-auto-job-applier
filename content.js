@@ -64,6 +64,8 @@
     [/current (designation|role|title|position)/, PROFILE_CONFIG.currentDesignation],
     [/qualification|degree|graduat|education/, PROFILE_CONFIG.highestQualification],
     [/team size|size of (the|your) team|how many (people|members|engineers|reportees|direct reports)|people (have you|did you) (manage|lead)|direct reports|reportees/, PROFILE_CONFIG.teamSize],
+    [/offer in hand|holding (an |any )?offers?|other offers?|any offers?/, "No"],
+    [/full[- ]time|permanent (role|position|opportunity|job)/, "Yes"],
     [/passport/, "Yes"],
     [/visa|work permit|authori[sz]ed to work|eligible to work/, "Yes"],
     [/background (check|verification)|\bbgv\b/, "Yes"],
